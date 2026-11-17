@@ -2,8 +2,8 @@
  * @name Translator
  * @author DevilBro
  * @authorId 278543574059057154
- * @version 2.8.6
- * @description Allows you to translate incoming and your outgoing Messages within Discord
+ * @version 2.8.7
+ * @description Allows you to translate incoming and your outgoing Messages within Discord (+ Auto-Translate toggle for the whole channel)
  * @invite Jx3TjNS
  * @donate https://www.paypal.me/MircoWittrien
  * @patreon https://www.patreon.com/MircoWittrien
@@ -71,13 +71,17 @@ module.exports = (_ => {
 		const TranslateButtonComponent = class TranslateButton extends BdApi.React.Component {
 			render() {
 				const enabled = _this.isTranslationEnabled(this.props.channelId);
+				const auto = _this.isAutoTranslateActive(this.props.channelId);
 				return BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.ChannelTextAreaButton, {
-					className: BDFDB.DOMUtils.formatClassName(BDFDB.disCN._translatortranslatebutton, _this.isTranslationEnabled(this.props.channelId) && BDFDB.disCN._translatortranslating, BDFDB.disCN.textareapickerbutton),
-					isActive: this.props.isActive,
+					className: BDFDB.DOMUtils.formatClassName(BDFDB.disCN._translatortranslatebutton, _this.isTranslationEnabled(this.props.channelId) && BDFDB.disCN._translatortranslating, auto && BDFDB.disCN._translatorautotranslate, BDFDB.disCN.textareapickerbutton),
+					isActive: this.props.isActive || auto,
 					iconSVG: translateIcon,
 					nativeClass: true,
-					tooltip: enabled && {
-						text: (_ => `${BDFDB.LanguageUtils.getName(languages[_this.getLanguageChoice(languageTypes.INPUT, messageTypes.SENT, this.props.channelId)])} ➝ ${BDFDB.LanguageUtils.getName(languages[_this.getLanguageChoice(languageTypes.OUTPUT, messageTypes.SENT, this.props.channelId)])}`),
+					tooltip: (auto || enabled) && {
+						text: (_ => {
+							let arrow = `${BDFDB.LanguageUtils.getName(languages[_this.getLanguageChoice(languageTypes.INPUT, messageTypes.SENT, this.props.channelId)])} ➝ ${BDFDB.LanguageUtils.getName(languages[_this.getLanguageChoice(languageTypes.OUTPUT, messageTypes.SENT, this.props.channelId)])}`;
+							return auto ? `自动翻译已开启 (Auto-Translate: ON) ${arrow}` : arrow;
+						}),
 						tooltipConfig: {style: "max-width: 400px"}
 					},
 					onClick: _ => {
@@ -273,11 +277,55 @@ module.exports = (_ => {
 							_this.toggleTranslation(this.props.channelId);
 							BDFDB.ReactUtils.forceUpdate(this);
 						}
+					}),
+					BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.FormDivider, {
+						className: BDFDB.DOMUtils.formatClassName(BDFDB.disCN.dividerdefault, BDFDB.disCN.marginbottom8)
+					}),
+					BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsItem, {
+						type: "Switch",
+						label: "自动翻译此频道的全部消息 (Auto-Translate all Messages in this Channel)",
+						tag: BDFDB.LibraryComponents.FormTitle.Tags.H5,
+						value: _this.isAutoTranslateActive(this.props.channelId),
+						onChange: value => {
+							_this.setAutoTranslate(this.props.channelId, value);
+							BDFDB.ReactUtils.forceUpdate(this);
+						}
+					}),
+					BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsLabel, {
+						className: BDFDB.disCN.marginbottom8,
+						label: "开启后当前频道已加载的消息会被逐条翻译，之后收到的新消息也会自动翻译。切换到其他频道或私信时该开关自动关闭，平时默认关闭。"
 					})
 				].flat(10).filter(n => n);
 			}
 		};
 
+		// 设置面板里的缓存状态 + 手动清理
+		const CacheStatusComponent = class CacheStatus extends BdApi.React.Component {
+			render () {
+				const stats = _this.getCacheStats();
+				const limit = _this.getCacheSizeLimitBytes();
+				return [
+					BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsLabel, {
+						key: "cache-status",
+						className: BDFDB.disCN.marginbottom8,
+						label: `当前缓存：${stats.count} 条消息 / 文件 ${_this.formatCacheSize(stats.size)}（上限 ${limit ? _this.formatCacheSize(limit) : "不限"}）`
+					}),
+					BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.Clickable, {
+						key: "cache-clear",
+						className: BDFDB.disCN.marginbottom8,
+						onClick: _ => {
+							_this.clearTranslationCache();
+							BDFDB.ReactUtils.forceUpdate(this);
+						},
+						children: BDFDB.ReactUtils.createElement("span", {
+							style: {color: "var(--text-link)", fontSize: "14px", cursor: "pointer"},
+							children: "🗑 清空翻译缓存"
+						})
+					})
+				];
+			}
+		};
+		
 		const brailleConverter = {
 			"0":"⠴", "1":"⠂", "2":"⠆", "3":"⠒", "4":"⠲", "5":"⠢", "6":"⠖", "7":"⠶", "8":"⠦", "9":"⠔", "!":"⠮", "\"":"⠐", "#":"⠼", "$":"⠫", "%":"⠩", "&":"⠯", "'":"⠄", "(":"⠷", ")":"⠾", "*":"⠡", "+":"⠬", ",":"⠠", "-":"⠤", ".":"⠨", "/":"⠌", ":":"⠱", ";":"⠰", "<":"⠣", "=":"⠿", ">":"⠜", "?":"⠹", "@":"⠈", "a":"⠁", "b":"⠃", "c":"⠉", "d":"⠙", "e":"⠑", "f":"⠋", "g":"⠛", "h":"⠓", "i":"⠊", "j":"⠚", "k":"⠅", "l":"⠇", "m":"⠍", "n":"⠝", "o":"⠕", "p":"⠏", "q":"⠟", "r":"⠗", "s":"⠎", "t":"⠞", "u":"⠥", "v":"⠧", "w":"⠺", "x":"⠭", "y":"⠽", "z":"⠵", "[":"⠪", "\\":"⠳", "]":"⠻", "^":"⠘", "⠁":"a", "⠂":"1", "⠃":"b", "⠄":"'", "⠅":"k", "⠆":"2", "⠇":"l", "⠈":"@", "⠉":"c", "⠊":"i", "⠋":"f", "⠌":"/", "⠍":"m", "⠎":"s", "⠏":"p", "⠐":"\"", "⠑":"e", "⠒":"3", "⠓":"h", "⠔":"9", "⠕":"o", "⠖":"6", "⠗":"r", "⠘":"^", "⠙":"d", "⠚":"j", "⠛":"g", "⠜":">", "⠝":"n", "⠞":"t", "⠟":"q", "⠠":", ", "⠡":"*", "⠢":"5", "⠣":"<", "⠤":"-", "⠥":"u", "⠦":"8", "⠧":"v", "⠨":".", "⠩":"%", "⠪":"[", "⠫":"$", "⠬":"+", "⠭":"x", "⠮":"!", "⠯":"&", "⠰":";", "⠱":":", "⠲":"4", "⠳":"\\", "⠴":"0", "⠵":"z", "⠶":"7", "⠷":"(", "⠸":"_", "⠹":"?", "⠺":"w", "⠻":"]", "⠼":"#", "⠽":"y", "⠾":")", "⠿":"=", "_":"⠸"
 		};
@@ -383,6 +431,28 @@ module.exports = (_ => {
 		var channelLanguages = {}, guildLanguages = {};
 		var translationEnabledStates = [], isTranslating;
 		var translatedMessages = {}, oldMessages = {};
+		// ---- 自动翻译（Auto-Translate）运行时状态，全部只存在内存里 ----
+		var autoTranslateChannelId = null;		// 当前开启自动翻译的频道，null 表示关闭
+		var autoTranslatePending = {};			// 已排队 / 正在翻译的消息 id，防止重复入队
+		var autoTranslateQueue = Promise.resolve();	// 串行队列，保证 isTranslating 语义正确
+		var autoTranslateToken = 0;				// 每次开关递增，用来作废上一轮的待执行任务
+		var autoTranslateFailed = {};			// 翻译失败/无变化的消息 id，避免同一批反复重试
+		var autoTranslateInterval = null;		// 轮询喂料定时器（往上翻加载出来的历史消息也靠它补翻）
+		var autoTranslateLastReset = 0;			// 上次插队重排的时间戳，用于冷却
+		var autoRerenderTimer = null;			// 合并重绘用的定时器
+		var lastUserScrollTs = 0;				// 最后一次用户滚动的时间戳，滚动期间不重绘
+		var userScrollHandler = null;			// 全局 scroll 捕获监听句柄
+		// ---- 翻译缓存（持久化到 Translator.config.json，重装插件也不会丢）----
+		var translationCacheTimer = null;		// 保存节流定时器
+		const translationCacheConfig = {
+			version: 1,				// 结构版本，改了结构就 +1，旧缓存自动作废
+			maxEntries: 2000,		// 磁盘缓存的条目数硬上限
+			maxMemoryEntries: 2000,	// 内存里保留的翻译条数上限，超出时丢弃最旧的
+			saveDebounce: 5000,		// 写盘节流(ms)：BD 是全量重写配置文件，频率别太高
+			defaultSizeLimit: 5		// 默认上限 5 MB
+		};
+		var cacheTrimSignature = "";			// 上次裁剪的指纹，命中就跳过重复计算
+		var cacheTrimmedEntries = null;
 		
 		const defaultLanguages = {
 			INPUT: "auto",
@@ -395,6 +465,21 @@ module.exports = (_ => {
 		const messageTypes = {
 			RECEIVED: "received",
 			SENT: "sent",
+		};
+		
+		// ---- 自动翻译行为配置 ----
+		const autoTranslateConfig = {
+			skipOwnMessages: true,		// 跳过自己发出的消息（自己的话不需要再翻一遍）
+			minLength: 2,				// 少于这个字符数不翻（纯表情、单字之类）
+			delayBetween: 250,			// 相邻两条之间的间隔(ms)，避免触发翻译接口的频率限制
+			batchRerenderDelay: 350,	// 合并重绘的节流时间(ms)
+			maxQueueLength: 100,		// 单批最多排队的消息数
+			pollInterval: 1500,			// 轮询喂料间隔(ms)：与渲染脱钩，往上翻历史时也能补翻
+			bottomThreshold: 60,		// 距底部小于这个像素就算“贴底”，此时不做滚动锚定
+			anchorWindow: 500,			// 锚定恢复的观察窗口(ms)：BDFDB 的重绘是异步的，窗口要够长
+			scrollIdleDelay: 300,		// 用户停止滚动多久之后才允许重绘，避免边翻边跳
+			priorityQueueThreshold: 8,	// 待处理任务超过这个数时，新到的消息允许插队重排
+			priorityCooldown: 3000		// 插队重排的最小间隔(ms)，防止持续刷屏时把历史饿死
 		};
 	
 		return class Translator extends Plugin {
@@ -425,6 +510,9 @@ module.exports = (_ => {
 					engines: {
 						translator:			{value: "googleapi"},
 						backup:				{value: "----"}
+					},
+					cache: {
+						sizeLimit:			{value: 10, popout: false}	// 翻译缓存上限，单位 MB，0 = 不限
 					}
 				};
 				for (let m in messageTypes) this.defaults.choices[messageTypes[m]] = {value: Object.keys(languageTypes).reduce((newObj, l) => (newObj[languageTypes[l]] = defaultLanguages[l], newObj), {})};
@@ -449,6 +537,9 @@ module.exports = (_ => {
 					${BDFDB.dotCN._translatortranslatebutton + BDFDB.dotCNS._translatortranslating + BDFDB.dotCN.textareaicon} {
 						color: var(--status-danger) !important;
 					}
+					${BDFDB.dotCN._translatorautotranslate}, ${BDFDB.dotCN._translatorautotranslate} svg {
+						color: var(--status-success) !important;
+					}
 					${BDFDB.dotCN._translatorconfigbutton} {
 						margin: 2px 3px 0 6px;
 					}
@@ -456,6 +547,13 @@ module.exports = (_ => {
 			}
 			
 			onStart () {
+				// 先把上次落盘的翻译结果读回来，这样插件重载 / 重装后不会把已经翻过的消息再翻一遍
+				this.restoreTranslationCache();
+				// 全局捕获滚动（捕获阶段能收到所有元素的滚动），用来判断"用户正在翻记录"
+				if (!userScrollHandler) {
+					userScrollHandler = _ => {lastUserScrollTs = Date.now();};
+					document.addEventListener("scroll", userScrollHandler, {capture: true, passive: true});
+				}
 				BDFDB.PatchUtils.patch(this, BDFDB.LibraryModules.MessageUtils, "startEditMessage", {before: e => {
 					if (e.methodArguments[1] && oldMessages[e.methodArguments[1]] && oldMessages[e.methodArguments[1]].content) e.methodArguments[2] = oldMessages[e.methodArguments[1]].content;
 				}});
@@ -486,6 +584,25 @@ module.exports = (_ => {
 			}
 			
 			onStop () {
+				// 卸载/停用时收起自动翻译，避免队列和定时器残留
+				autoTranslateChannelId = null;
+				autoTranslateToken++;
+				autoTranslatePending = {};
+				autoTranslateFailed = {};
+				if (autoTranslateInterval) {
+					BDFDB.TimeUtils.clear(autoTranslateInterval);
+					autoTranslateInterval = null;
+				}
+				if (autoRerenderTimer) {
+					BDFDB.TimeUtils.clear(autoRerenderTimer);
+					autoRerenderTimer = null;
+				}
+				// 卸载前把还没落盘的最后一批翻译结果写进去，重载插件后才能直接显示
+				this.saveTranslationCache(true);
+				if (userScrollHandler) {
+					document.removeEventListener("scroll", userScrollHandler, {capture: true});
+					userScrollHandler = null;
+				}
 				this.forceUpdateAll();
 			}
 
@@ -507,6 +624,35 @@ module.exports = (_ => {
 						settingsItems.push(BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.FormDivider, {
 							className: BDFDB.disCNS.dividerdefault + BDFDB.disCN.marginbottom8
 						}));
+						
+						settingsItems.push(BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsSaveItem, {
+							type: "Select",
+							plugin: this,
+							keys: ["cache", "sizeLimit"],
+							label: "翻译缓存上限 (Translation Cache Limit)",
+							value: this.settings.cache ? this.settings.cache.sizeLimit : translationCacheConfig.defaultSizeLimit,
+							options: [
+								{label: "1 MB", value: 1},
+								{label: "2 MB", value: 2},
+								{label: "5 MB", value: 5},
+								{label: "10 MB", value: 10},
+								{label: "20 MB", value: 20},
+								{label: "50 MB", value: 50},
+								{label: "100 MB", value: 100},
+								{label: "不限 (Unlimited)", value: 0}
+							],
+							onChange: _ => {
+								// 上限调小后立刻按新预算裁剪一次
+								this.saveTranslationCache(true);
+							}
+						}));
+						
+						settingsItems.push(BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsLabel, {
+							className: BDFDB.disCN.marginbottom8,
+							label: "翻译结果会缓存到本地，插件重载甚至删除重装后仍直接显示译文、不会重新翻译。超出上限时优先丢弃最旧的消息。"
+						}));
+						
+						settingsItems.push(BDFDB.ReactUtils.createElement(CacheStatusComponent, {}));
 						
 						settingsItems.push(BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsPanelList, {
 							title: "Own Auth Keys:",
@@ -997,6 +1143,11 @@ module.exports = (_ => {
 			}
 			
 			processChannelTextAreaButtons (e) {
+				// 第二道保险：输入框按频道重建，这里也能感知到“已经切走了”，立刻关掉自动翻译
+				if (autoTranslateChannelId) {
+					let currentId = BDFDB.LibraryStores.SelectedChannelStore.getChannelId();
+					if (currentId && currentId !== autoTranslateChannelId) this.stopAutoTranslate();
+				}
 				if (!this.settings.general.addTranslateButton || e.instance.props.disabled || e.instance.props.type != BDFDB.DiscordConstants.ChannelTextAreaTypes.NORMAL && e.instance.props.type != BDFDB.DiscordConstants.ChannelTextAreaTypes.SIDEBAR) return;
 				if (e.returnvalue) e.returnvalue.props.children.unshift(BDFDB.ReactUtils.createElement(TranslateButtonComponent, {
 					guildId: e.instance.props.channel.guild_id ? e.instance.props.channel.guild_id : "@me",
@@ -1005,16 +1156,32 @@ module.exports = (_ => {
 			}
 
 			processMessages (e) {
-				e.instance.props.channelStream = [].concat(e.instance.props.channelStream);
+				// 只在不是数组时才复制：每次渲染都生成新数组引用会让列表误以为数据变了，重算滚动位置
+				if (!Array.isArray(e.instance.props.channelStream)) e.instance.props.channelStream = [].concat(e.instance.props.channelStream);
+				let autoCandidates = [];
 				for (let i in e.instance.props.channelStream) {
 					let message = e.instance.props.channelStream[i].content;
 					if (message) {
-						if (BDFDB.ArrayUtils.is(message.attachments)) this.checkMessage(e.instance.props.channelStream[i], message);
+						if (BDFDB.ArrayUtils.is(message.attachments)) {
+							this.checkMessage(e.instance.props.channelStream[i], message);
+							autoCandidates.push(e.instance.props.channelStream[i]);
+						}
 						else if (BDFDB.ArrayUtils.is(message)) for (let j in message) {
 							let childMessage = message[j].content;
-							if (childMessage && BDFDB.ArrayUtils.is(childMessage.attachments)) this.checkMessage(message[j], childMessage);
+							if (childMessage && BDFDB.ArrayUtils.is(childMessage.attachments)) {
+								this.checkMessage(message[j], childMessage);
+								autoCandidates.push(message[j]);
+							}
 						}
 					}
+				}
+				
+				// ---- 自动翻译：切频道即关闭，同一频道则把还没翻的消息排队 ----
+				if (autoTranslateChannelId) {
+					let channel = e.instance.props.channel;
+					let currentId = BDFDB.LibraryStores.SelectedChannelStore.getChannelId();
+					if (currentId && currentId !== autoTranslateChannelId) this.stopAutoTranslate();
+					else if (autoCandidates.length) this.queueAutoTranslateMessages(autoCandidates, channel || {id: autoTranslateChannelId}, {priority: true});
 				}
 			}
 			
@@ -1115,6 +1282,462 @@ module.exports = (_ => {
 				return translationEnabledStates.includes(this.settings.general.usePerChatTranslation ? channelId : "global");
 			}
 
+			// ==================== 自动翻译 (Auto-Translate) ====================
+			
+			isAutoTranslateActive (channelId) {
+				if (!autoTranslateChannelId) return false;
+				if (!channelId) return true;
+				return autoTranslateChannelId === channelId;
+			}
+			
+			setAutoTranslate (channelId, value) {
+				return value ? this.startAutoTranslate(channelId) : this.stopAutoTranslate();
+			}
+			
+			toggleAutoTranslate (channelId) {
+				return this.setAutoTranslate(channelId, !this.isAutoTranslateActive(channelId));
+			}
+			
+			startAutoTranslate (channelId) {
+				if (!channelId || autoTranslateChannelId === channelId) return;
+				autoTranslateChannelId = channelId;
+				autoTranslateToken++;
+				autoTranslatePending = {};
+				autoTranslateFailed = {};
+				
+				let channel = BDFDB.LibraryStores.ChannelStore.getChannel(channelId);
+				let messages = this.getLoadedChannelMessages(channelId);
+				if (channel && messages.length) this.queueAutoTranslateMessages(messages, channel);
+				else this.rerenderMessagesSafely();
+				
+				// 与渲染解耦的喂料循环：往上翻加载出来的历史消息、以及渲染钩子漏掉的消息都靠它补上
+				if (autoTranslateInterval) BDFDB.TimeUtils.clear(autoTranslateInterval);
+				autoTranslateInterval = BDFDB.TimeUtils.interval(_ => this.pollAutoTranslate(), autoTranslateConfig.pollInterval);
+				
+				this.refreshAutoTranslateButtons();
+				BDFDB.NotificationUtils.toast(`自动翻译已开启 (Auto-Translate ON)`, {
+					type: "success",
+					position: "center",
+					timeout: 2000
+				});
+			}
+			
+			stopAutoTranslate (updateButtons = true) {
+				if (!autoTranslateChannelId) return;
+				autoTranslateChannelId = null;
+				autoTranslateToken++;
+				autoTranslatePending = {};
+				autoTranslateFailed = {};
+				if (autoTranslateInterval) {
+					BDFDB.TimeUtils.clear(autoTranslateInterval);
+					autoTranslateInterval = null;
+				}
+				if (updateButtons) this.refreshAutoTranslateButtons();
+			}
+			
+			pollAutoTranslate () {
+				if (!autoTranslateChannelId) return;
+				let currentId = BDFDB.LibraryStores.SelectedChannelStore.getChannelId();
+				if (currentId && currentId !== autoTranslateChannelId) return this.stopAutoTranslate();
+				let channel = BDFDB.LibraryStores.ChannelStore.getChannel(autoTranslateChannelId);
+				if (!channel) return;
+				let messages = this.getLoadedChannelMessages(autoTranslateChannelId);
+				if (messages.length) this.queueAutoTranslateMessages(messages, channel);
+			}
+			
+			refreshAutoTranslateButtons () {
+				// 可能从渲染流程里被调用，同步重跑 patch 会打断 React 渲染，推到下一个 tick
+				BDFDB.TimeUtils.timeout(_ => BDFDB.PatchUtils.forceAllUpdates(this), 0);
+			}
+			
+			getLoadedChannelMessages (channelId) {
+				try {
+					let store = BDFDB.LibraryStores.MessageStore || BDFDB.LibraryModules.MessageStore;
+					let records = store && store.getMessages(channelId);
+					if (!records) return [];
+					let list = typeof records.toArray == "function" ? records.toArray() : (records._array || [].concat(records));
+					let messages = [].concat(list).filter(Boolean).map(n => n.message || n);
+					return messages.filter(n => n && n.id);
+				}
+				catch (e) {return [];}
+			}
+			
+			shouldAutoTranslateMessage (message) {
+				if (!message || !message.id) return false;
+				if (translatedMessages[message.id] || autoTranslatePending[message.id] || autoTranslateFailed[message.id]) return false;
+				let content = (message.content || "").trim();
+				if (content.length < autoTranslateConfig.minLength) return false;
+				if (/^https?:\/\/\S+$/i.test(content)) return false;
+				let type = message.type;
+				if (typeof type == "number" && ![0, 19, 20, 21].includes(type)) return false;
+				if (autoTranslateConfig.skipOwnMessages) {
+					let meId = BDFDB.UserUtils && BDFDB.UserUtils.meId;
+					if (!meId) {
+						let userStore = BDFDB.LibraryStores.UserStore;
+						let me = userStore && userStore.getCurrentUser && userStore.getCurrentUser();
+						meId = me && me.id;
+					}
+					if (meId && message.author && message.author.id === meId) return false;
+				}
+				return true;
+			}
+			
+			queueAutoTranslateMessages (messages, channel, options = {}) {
+				if (!autoTranslateChannelId || !channel) return;
+				let channelId = autoTranslateChannelId;
+				
+				// 新到的消息要能插队：待处理积压较多时，作废排队的旧任务，按“最新优先”重新排一遍。
+				// 已翻译过的不会重来，所以往旧推进不会丢进度。
+				if (options.priority) {
+					let now = Date.now();
+					if (Object.keys(autoTranslatePending).length >= autoTranslateConfig.priorityQueueThreshold && now - autoTranslateLastReset > autoTranslateConfig.priorityCooldown) {
+						autoTranslateLastReset = now;
+						autoTranslateToken++;
+						autoTranslatePending = {};
+					}
+				}
+				let token = autoTranslateToken, queued = 0;
+				// 新 → 旧：按雪花 id 降序（id 越大越新），最新的消息先翻，越往上越靠后
+				let ordered = messages.slice().sort((a, b) => {
+					try {
+						let x = BigInt(a.id), y = BigInt(b.id);
+						return x === y ? 0 : (x < y ? 1 : -1);
+					}
+					catch (e) {return 0;}
+				});
+				for (let i = 0; i < ordered.length; i++) {
+					let message = ordered[i];
+					if (!this.shouldAutoTranslateMessage(message)) continue;
+					if (queued >= autoTranslateConfig.maxQueueLength) break;
+					queued++;
+					autoTranslatePending[message.id] = true;
+					autoTranslateQueue = autoTranslateQueue.then(_ => new Promise(resolve => {
+						const drop = _ => {delete autoTranslatePending[message.id]; resolve();};
+						// 开关已切换 / 频道已变 → 丢弃这条任务
+						if (token !== autoTranslateToken || autoTranslateChannelId !== channelId) return drop();
+						if (translatedMessages[message.id]) return drop();
+						setTimeout(_ => {
+							if (token !== autoTranslateToken || autoTranslateChannelId !== channelId) return drop();
+							this.translateMessage(message, channel, {silent: true, noRerender: true}).then(_ => {
+								delete autoTranslatePending[message.id];
+								if (!translatedMessages[message.id]) autoTranslateFailed[message.id] = true;
+								this.scheduleAutoRerender();
+								resolve();
+							}, _ => {
+								delete autoTranslatePending[message.id];
+								autoTranslateFailed[message.id] = true;
+								resolve();
+							});
+						}, autoTranslateConfig.delayBetween);
+					}));
+				}
+			}
+			
+			scheduleAutoRerender () {
+				if (autoRerenderTimer) return;
+				let run = _ => {
+					autoRerenderTimer = null;
+					// 用户还在滚/刚滚完 → 继续推迟。滚动时画面一动不动，等停下来再一次性刷新
+					if (Date.now() - lastUserScrollTs < autoTranslateConfig.scrollIdleDelay) {
+						autoRerenderTimer = BDFDB.TimeUtils.timeout(run, autoTranslateConfig.scrollIdleDelay);
+						return;
+					}
+					if (translatedMessages && Object.keys(translatedMessages).length) this.rerenderMessagesSafely();
+				};
+				autoRerenderTimer = BDFDB.TimeUtils.timeout(run, autoTranslateConfig.batchRerenderDelay);
+			}
+			
+			// ---------- 滚动位置保护 ----------
+			
+			getChatScroller () {
+				let list = document.querySelector('[data-list-id="chat-messages"]');
+				let node = list ? list.parentElement : null;
+				if (!node) {
+					// 兜底：Discord 改了 DOM 结构时，从任意一条消息往上找
+					let item = document.querySelector('[id^="chat-messages-"]');
+					node = item ? item.parentElement : null;
+				}
+				while (node && node !== document.body) {
+					let style = window.getComputedStyle(node);
+					if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 4) return node;
+					node = node.parentElement;
+				}
+				return null;
+			}
+			
+			captureScrollAnchor (scroller) {
+				let scrollerTop = scroller.getBoundingClientRect().top;
+				let items = scroller.querySelectorAll('[id^="chat-messages-"]');
+				for (let i = 0; i < items.length; i++) {
+					let rect = items[i].getBoundingClientRect();
+					if (rect.bottom > scrollerTop + 2 && rect.height > 0) return {id: items[i].id, offset: rect.top - scrollerTop};
+				}
+				return null;
+			}
+			
+			// 把锚点消息拉回原来的视口偏移。scroller 每次重新获取，因为重绘可能把整棵子树换掉
+			restoreScrollAnchor (anchor) {
+				if (!anchor) return;
+				let scroller = this.getChatScroller();
+				if (!scroller) return;
+				let el = document.getElementById(anchor.id);
+				if (!el) return;
+				let delta = (el.getBoundingClientRect().top - scroller.getBoundingClientRect().top) - anchor.offset;
+				if (Math.abs(delta) > 0.5) scroller.scrollTop += delta;
+			}
+			
+			// 替代裸的 rerenderAll：重绘会重建消息组件、内容高度突变，用户正往上翻时会被拽走。
+			// 记住“视口最上面那条消息 + 它相对视口的偏移”，重绘后反复把滚动位置顶回去。
+			rerenderMessagesSafely () {
+				let scroller = this.getChatScroller();
+				if (!scroller) return BDFDB.MessageUtils.rerenderAll(true);
+				let distanceToBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+				if (distanceToBottom <= autoTranslateConfig.bottomThreshold) return BDFDB.MessageUtils.rerenderAll(true);
+				
+				let anchor = this.captureScrollAnchor(scroller);
+				if (!anchor) return BDFDB.MessageUtils.rerenderAll(true);
+				
+				BDFDB.MessageUtils.rerenderAll(true);
+				
+				// 同步先纠一次，抢在浏览器下一次布局之前
+				this.restoreScrollAnchor(anchor);
+				
+				// 之后多巡几轮：React 的布局是异步的，Discord 也可能在稍晚的时候把 scrollTop 拽到底
+				let deadline = Date.now() + autoTranslateConfig.anchorWindow;
+				let tick = _ => {
+					// 用户这期间自己滚了 → 让位，别跟他抢
+					if (Date.now() - lastUserScrollTs < 50) return;
+					this.restoreScrollAnchor(anchor);
+					if (Date.now() < deadline) window.requestAnimationFrame(tick);
+				};
+				window.requestAnimationFrame(tick);
+				BDFDB.TimeUtils.timeout(_ => {
+					if (Date.now() - lastUserScrollTs < 50) return;
+					this.restoreScrollAnchor(anchor);
+				}, autoTranslateConfig.anchorWindow);
+			}
+			
+			// ==================== 翻译缓存（持久化） ====================
+			
+			getCacheSizeLimitBytes () {
+				let mb = this.settings && this.settings.cache ? this.settings.cache.sizeLimit : translationCacheConfig.defaultSizeLimit;
+				if (typeof mb != "number") mb = Number(mb);
+				if (!isFinite(mb) || mb <= 0) return 0;		// 0 / 负数 / 非法值 = 不限
+				return mb * 1024 * 1024;
+			}
+			
+			// Discord 消息 id 是雪花号，高 42 位就是毫秒时间戳，用来判断"谁更旧"
+			compareMessageAge (a, b) {
+				try {
+					let x = BigInt(String(a)), y = BigInt(String(b));
+					return x === y ? 0 : (x < y ? -1 : 1);	// 升序：越旧越靠前
+				}
+				catch (e) {return 0;}
+			}
+			
+			buildCacheEntries () {
+				let entries = {};
+				for (let id in translatedMessages) {
+					let t = translatedMessages[id], o = oldMessages[id];
+					if (!t || typeof t.content != "string") continue;
+					entries[id] = {
+						c: t.content,					// 译文
+						i: t.input,						// 源语言
+						o: t.output,					// 目标语言
+						e: t.embeds || {},				// embed 译文
+						x: o && o.originalContentData ? o.originalContentData.content : null	// 原文，取消翻译时要还原
+					};
+				}
+				return entries;
+			}
+			
+			// 超上限时从最旧的消息开始丢
+			trimCacheEntries (entries) {
+				let ids = Object.keys(entries);
+				if (!ids.length) {
+					cacheTrimmedEntries = null;
+					cacheTrimSignature = "";
+					return entries;
+				}
+				ids.sort((a, b) => this.compareMessageAge(a, b));
+				if (ids.length > translationCacheConfig.maxEntries) ids = ids.slice(ids.length - translationCacheConfig.maxEntries);
+				
+				let build = list => {
+					let obj = {};
+					for (let id of list) obj[id] = entries[id];
+					return obj;
+				};
+				let sizeOf = obj => {
+					let json;
+					try {json = JSON.stringify(obj);}
+					catch (e) {return 0;}
+					try {return new Blob([json]).size;}
+					catch (e) {return json.length * 2;}
+				};
+				
+				let limitBytes = this.getCacheSizeLimitBytes();
+				
+				// 先用廉价估算挡一道：绝大多数保存都到不了这一步的精确计算
+				let rough = 0;
+				for (let id of ids) {
+					let e = entries[id];
+					rough += (e.c ? e.c.length : 0) + (e.x ? e.x.length : 0) + 120;
+				}
+				rough = Math.round(rough * 2.5);	// JS 字符数 → UTF-8 字节的粗略换算
+				
+				let signature = ids.length + ":" + rough + ":" + limitBytes;
+				if (signature === cacheTrimSignature && cacheTrimmedEntries) return cacheTrimmedEntries;
+				
+				let result;
+				if (!limitBytes || rough <= limitBytes) result = build(ids);
+				else {
+					let total = sizeOf(build(ids));
+					// 按平均条目大小估算要丢几条，最多迭代 8 次收敛
+					for (let pass = 0; pass < 8 && ids.length && total > limitBytes; pass++) {
+						let perEntry = total / ids.length;
+						let dropCount = Math.max(1, Math.ceil((total - limitBytes) / Math.max(perEntry, 1)));
+						ids = ids.slice(Math.min(dropCount, ids.length));
+						total = sizeOf(build(ids));
+					}
+					result = build(ids);
+				}
+				
+				cacheTrimSignature = signature;
+				cacheTrimmedEntries = result;
+				return result;
+			}
+			
+			getCacheFilePath () {
+				try {
+					let path = require("path");
+					return path.join(BdApi.Plugins.folder, "Translator.cache.json");
+				}
+				catch (e) {return null;}
+			}
+			
+			getCacheStats () {
+				let count = 0;
+				for (let id in translatedMessages) count++;
+				let size = 0;
+				try {
+					let fs = require("fs"), file = this.getCacheFilePath();
+					if (file && fs.existsSync(file)) size = fs.statSync(file).size;
+				}
+				catch (e) {size = 0;}
+				return {count, size};
+			}
+			
+			formatCacheSize (bytes) {
+				if (bytes >= 1048576) return (bytes / 1048576).toFixed(2) + " MB";
+				if (bytes >= 1024) return (bytes / 1024).toFixed(1) + " KB";
+				return (bytes || 0) + " B";
+			}
+			
+			clearTranslationCache () {
+				for (let id in translatedMessages) delete translatedMessages[id];
+				cacheTrimSignature = "";
+				cacheTrimmedEntries = null;
+				if (translationCacheTimer) {
+					BDFDB.TimeUtils.clear(translationCacheTimer);
+					translationCacheTimer = null;
+				}
+				try {
+					let fs = require("fs"), file = this.getCacheFilePath();
+					if (file && fs.existsSync(file)) fs.unlinkSync(file);
+				}
+				catch (e) {}
+				// 先重绘一次，让 checkMessage 用 oldMessages 把原文贴回去，再把原文映射丢掉
+				this.rerenderMessagesSafely();
+				BDFDB.TimeUtils.timeout(_ => {
+					for (let id in oldMessages) delete oldMessages[id];
+				}, 500);
+				BDFDB.NotificationUtils.toast("翻译缓存已清空", {type: "success", position: "center", timeout: 2000});
+			}
+			
+			saveTranslationCache (immediate = false) {
+				let write = _ => {
+					translationCacheTimer = null;
+					try {
+						let file = this.getCacheFilePath();
+						if (!file) return;
+						let entries = this.trimCacheEntries(this.buildCacheEntries());
+						let json = JSON.stringify({v: translationCacheConfig.version, t: Date.now(), entries});
+						require("fs").writeFile(file, json, "utf8", _ => {});
+					}
+					catch (e) {console.error("[Translator] 翻译缓存保存失败", e);}
+				};
+				if (immediate) {
+					if (translationCacheTimer) BDFDB.TimeUtils.clear(translationCacheTimer);
+					return write();
+				}
+				if (translationCacheTimer) return;
+				translationCacheTimer = BDFDB.TimeUtils.timeout(write, translationCacheConfig.saveDebounce);
+			}
+			
+			restoreTranslationCache () {
+				let cache = null, migrated = false;
+				try {
+					let fs = require("fs"), file = this.getCacheFilePath();
+					if (file && fs.existsSync(file)) {
+						let raw = fs.readFileSync(file, "utf8");
+						if (raw && raw.trim()) cache = JSON.parse(raw);
+					}
+				}
+				catch (e) {cache = null;}
+				
+				// 迁移：上一版把缓存塞在 Translator.config.json 里，读出来换成独立文件
+				if (!cache || !cache.entries) {
+					try {
+						let legacy = BDFDB.DataUtils.load(this, "translationCache");
+						if (legacy && legacy.entries) {
+							cache = legacy;
+							migrated = true;
+						}
+					}
+					catch (e) {}
+				}
+				if (!cache || cache.v !== translationCacheConfig.version || !cache.entries) return;
+				
+				let ids = Object.keys(cache.entries).filter(id => {
+					let e = cache.entries[id];
+					return e && typeof e.c == "string";
+				});
+				if (!ids.length) return;
+				ids.sort((a, b) => this.compareMessageAge(a, b));
+				if (ids.length > translationCacheConfig.maxEntries) ids = ids.slice(ids.length - translationCacheConfig.maxEntries);
+				
+				for (let id of ids) {
+					let e = cache.entries[id];
+					// embeds 必须兜底成 {}，否则 processEmbed 里 Object.keys(undefined) 会抛错
+					translatedMessages[id] = {
+						content: e.c,
+						embeds: e.e && typeof e.e == "object" ? e.e : {},
+						input: e.i,
+						output: e.o
+					};
+					// 原文一起恢复，否则"取消翻译"退不回原文
+					if (typeof e.x == "string") oldMessages[id] = {
+						content: e.x,
+						originalContentData: {content: e.x, embeds: []}
+					};
+				}
+				
+				if (migrated) {
+					// 按新格式写到独立文件，并把配置文件里的旧字段清空
+					this.saveTranslationCache(true);
+					BDFDB.DataUtils.save({}, this, "translationCache");
+				}
+			}
+			
+			// 内存里的翻译条数也有上限，超出时丢最旧的（下次重绘会退回原文，不再占内存）
+			trimMemoryTranslations () {
+				let ids = Object.keys(translatedMessages);
+				if (ids.length <= translationCacheConfig.maxMemoryEntries) return;
+				ids.sort((a, b) => this.compareMessageAge(a, b));
+				let drop = ids.slice(0, ids.length - translationCacheConfig.maxMemoryEntries);
+				for (let id of drop) delete translatedMessages[id];
+			}
+
 			setLanguages () {
 				if (this.settings.engines.translator == this.settings.engines.backup) {
 					this.settings.engines.backup = Object.keys(translationEngines).filter(n => n != this.settings.engines.translator)[0];
@@ -1188,18 +1811,21 @@ module.exports = (_ => {
 				}
 			}
 
-			translateMessage (message, channel) {
+			translateMessage (message, channel, options = {}) {
 				return new Promise(callback => {
 					if (!message) return callback(null);
 					if (translatedMessages[message.id]) {
 						delete translatedMessages[message.id];
-						BDFDB.MessageUtils.rerenderAll(true);
+						// 注意：这里不能删 oldMessages，checkMessage 靠它把原文还原回去
+						this.saveTranslationCache();
+						if (!options.noRerender) this.rerenderMessagesSafely();
 						callback(false);
 					}
 					else {
+						let messageEmbeds = Array.isArray(message.embeds) ? message.embeds : [];
 						let originalContentData = {
 							content: message.content || "",
-							embeds: message.embeds.map(embed => ({
+							embeds: messageEmbeds.map(embed => ({
 								description: embed.rawDescription || "",
 								title: embed.rawTitle || "",
 								footerText: embed.footer ? embed.footer.text : "",
@@ -1215,8 +1841,8 @@ module.exports = (_ => {
 							});
 							if (embed.footerText) allTextsToTranslate += "\n" + embed.footerText;
 						});
-						message.embeds.forEach(embed => embed.message_id = message.id);
-						let embedIds = message.embeds.map(embed => embed.id);
+						messageEmbeds.forEach(embed => embed.message_id = message.id);
+						let embedIds = messageEmbeds.map(embed => embed.id);
 						this.translateText(allTextsToTranslate, messageTypes.RECEIVED, (translation, input, output) => {
 							if (translation) {
 								let oldStrings = originalContentData.content.split(/\n{0,1}__________________ __________________ __________________\n{0,1}/);
@@ -1246,15 +1872,17 @@ module.exports = (_ => {
 									input,
 									output
 								};
-								BDFDB.MessageUtils.rerenderAll(true);
+								this.trimMemoryTranslations();
+								this.saveTranslationCache();
+								if (!options.noRerender) this.rerenderMessagesSafely();
 							}
 							callback(true);
-						});
+						}, null, options.silent);
 					}
 				});
 			}
 
-			translateText (text, place, callback, forcedOutputLanguage = null) {
+			translateText (text, place, callback, forcedOutputLanguage = null, silent = false) {
 				let toast = null, toastInterval, finished = false, finishTranslation = translation => {
 					isTranslating = false;
 					if (toast) toast.close();
@@ -1297,7 +1925,7 @@ module.exports = (_ => {
 							if (toast) toast.close();
 							BDFDB.TimeUtils.clear(toastInterval);
 							
-							toast = BDFDB.NotificationUtils.toast(`${this.labels.toast_translating} (${translationEngines[engine].name}) - ${BDFDB.LanguageUtils.LibraryStrings.please_wait}`, {
+							if (!silent) toast = BDFDB.NotificationUtils.toast(`${this.labels.toast_translating} (${translationEngines[engine].name}) - ${BDFDB.LanguageUtils.LibraryStrings.please_wait}`, {
 								timeout: 0,
 								ellipsis: true,
 								position: "center",
@@ -1306,7 +1934,7 @@ module.exports = (_ => {
 							toastInterval = BDFDB.TimeUtils.interval((_, count) => {
 								if (count < 40) return;
 								finishTranslation("");
-								BDFDB.NotificationUtils.toast(`${this.labels.toast_translating_failed} (${translationEngines[engine].name}) - ${this.labels.toast_translating_tryanother}`, {
+								if (!silent) BDFDB.NotificationUtils.toast(`${this.labels.toast_translating_failed} (${translationEngines[engine].name}) - ${this.labels.toast_translating_tryanother}`, {
 									type: "danger",
 									position: "center"
 								});
